@@ -1,30 +1,23 @@
 "use client";
 
+import { AuthCarousel } from "@/components/ui/auth-carousel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-const slides = ["/hero.png", "/hero1.png", "/hero2.png", "/hero3.png"];
+const slides = [
+  { src: "/hero.png", alt: "School Campus", priority: true },
+  { src: "/hero1.png", alt: "Students" },
+  { src: "/hero2.png", alt: "Young Students" },
+  { src: "/hero3.png", alt: "School Building" },
+];
 
 export default function SignUp() {
-  const [activeSlide, setActiveSlide] = useState(0);
   const [role, setRole] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  useEffect(() => {
-    if (slides.length <= 1) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setActiveSlide((current) => (current + 1) % slides.length);
-    }, 5000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
 
   const headingText =
     role === "student"
@@ -58,25 +51,7 @@ export default function SignUp() {
       <main
         className="relative flex flex-1 items-center justify-center overflow-hidden lg:justify-end"
         style={{ minHeight: "calc(100vh - 64px)" }}>
-        <div className="absolute inset-0 z-0 bg-black">
-          {slides.map((slide, index) => (
-            <img
-              key={slide}
-              alt={
-                index === 0
-                  ? "School Campus"
-                  : index === 1
-                    ? "Students"
-                    : index === 2
-                      ? "Young Students"
-                      : "School Building"
-              }
-              className={`carousel-slide ${index === activeSlide ? "active" : ""}`}
-              src={slide}
-            />
-          ))}
-          <div className="absolute inset-0 z-10 bg-black/20" />
-        </div>
+        <AuthCarousel slides={slides} />
 
         <div className="relative z-20 w-full max-w-2xl px-4 sm:px-6 lg:mr-24 lg:max-w-[680px] lg:pr-8">
           <div className="w-full rounded-custom border border-gray-100 bg-white/85 p-8 shadow-2xl backdrop-blur-sm sm:p-10">
