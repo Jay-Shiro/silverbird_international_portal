@@ -1,6 +1,6 @@
 "use client";
 
-import { AuthCarousel } from "@/components/ui/auth-carousel";
+import { AuthCarousel } from "@/components/auth-carousel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
