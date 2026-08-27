@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 const slides = ["/hero.png", "/hero1.png", "/hero2.png", "/hero3.png"];
 
-export default function Home() {
+export default function Page() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [role, setRole] = useState<string>("");
 
