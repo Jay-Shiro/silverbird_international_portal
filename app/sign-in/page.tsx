@@ -1,13 +1,14 @@
+/* eslint-disable prefer-const */
 "use client";
 
 import { AuthCarousel } from "@/components/auth-carousel";
+import AuthNavbar from "@/components/auth-navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth/auth-client";
 import { getDashboardRoute, normalizeRole } from "@/lib/dashboard-routes";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import AuthNavbar from "@/components/auth-navbar";
 
 const slides = [
   { src: "/hero.png", alt: "School Campus", priority: true },
@@ -45,13 +46,21 @@ export default function SignIn() {
     }
 
     const { data: sessionData } = await authClient.getSession();
-    const sessionUser = (sessionData?.user ?? {}) as { role?: string | null };
-    const userRole = normalizeRole(sessionUser.role ?? selectedRole);
+    const sessionUser = (sessionData?.user ?? {}) as {
+      id?: string;
+      email?: string;
+      role?: string | null;
+    };
 
+    // Try session role first
+    let userRole = normalizeRole(sessionUser.role ?? selectedRole);
+
+    // If role missing in session, cannot proceed — require admin support
     if (!userRole) {
       setError(
         "Your account role could not be resolved. Please contact support.",
       );
+      setIsPending(false);
       return;
     }
 
@@ -74,7 +83,6 @@ export default function SignIn() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100 font-sans">
-
       <AuthNavbar variant="signin" />
 
       <main
@@ -89,35 +97,35 @@ export default function SignIn() {
             </div>
 
             <form className="space-y-4" onSubmit={handleSubmit} action="#">
-                <label
-                  className="mb-1 flex items-center text-sm font-medium text-gray-700"
-                  htmlFor="email">
-                  <svg
-                    className="mr-2 h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                    />
-                  </svg>
-                  Email
-                </label>
-                <div className="mt-1">
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    placeholder="Enter your email"
-                  className="block w-full appearance-none rounded-custom border border-gray-300 px-3 py-2.5 shadow-sm placeholder:text-gray-400 focus:border-brand focus:outline-none focus:ring-brand sm:text-sm"
+              <label
+                className="mb-1 flex items-center text-sm font-medium text-gray-700"
+                htmlFor="email">
+                <svg
+                  className="mr-2 h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
                   />
-                </div>
+                </svg>
+                Email
+              </label>
+              <div className="mt-1">
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="Enter your email"
+                  className="block w-full appearance-none rounded-custom border border-gray-300 px-3 py-2.5 shadow-sm placeholder:text-gray-400 focus:border-brand focus:outline-none focus:ring-brand sm:text-sm"
+                />
+              </div>
 
               <div>
                 <label
