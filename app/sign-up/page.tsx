@@ -3,7 +3,10 @@
 import { AuthCarousel } from "@/components/auth-carousel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth/auth-client";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AuthNavbar from "@/components/auth-navbar";
 
 const slides = [
   { src: "/hero.png", alt: "School Campus", priority: true },
@@ -13,11 +16,14 @@ const slides = [
 ];
 
 export default function SignUp() {
+  const router = useRouter();
   const [role, setRole] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const headingText =
     role === "student"
@@ -31,37 +37,60 @@ export default function SignUp() {
   const passwordMismatch =
     confirmPassword.length > 0 && password !== confirmPassword;
 
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setIsPending(true);
+
+    const formData = new FormData(event.currentTarget);
+    const fullName = String(formData.get("fullname") ?? "").trim();
+    const phone = String(formData.get("phone") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim();
+    const selectedRole = String(formData.get("role") ?? "").trim();
+    const submittedPassword = String(formData.get("password") ?? "");
+
+    const { error: signUpError } = await authClient.signUp.email({
+      email,
+      password: submittedPassword,
+      name: fullName,
+      ...(fullName ? { fullname: fullName } : {}),
+      ...(phone ? { phone } : {}),
+      ...(selectedRole ? { role: selectedRole } : {}),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    setIsPending(false);
+
+    if (signUpError) {
+      setError(
+        signUpError.message ?? "Account creation failed. Please try again.",
+      );
+      return;
+    }
+
+    router.push(`/sign-in?role=${selectedRole}`);
+    router.refresh();
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-100 font-sans">
-      <header className="relative z-20 bg-brand text-white shadow-md">
-        <div className="mx-8 flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img
-              alt="Silverbird International School Logo"
-              className="h-10 w-auto rounded-full bg-white p-0.5"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAG4I-eiV-zAxfl34JZEgP4VDdOcsGm8UBrYwwlqpQf3g9ZtWbgoz5d-5pWEalzMPeHKZPZOtsIu48W5zyrNAJv4k_SOMs6HUOZr6nH_kC_QI7k0lIqHm_QcRZJstQviaeeBYufVgXxb19yyEq7X34lA6ao77CT01bh-u0VUC2WGvYxiWs-9vBhkG2pdZPO0jr3dcOZj16CCuOmg-vTF3OwTz-2ftuNL6sjPROvjGbN8PR3Zayp8Vaqtxm_kJkp2cdSA"
-            />
-            <h1 className="text-xl font-semibold tracking-wide">
-              Silverbird International School
-            </h1>
-          </div>
-        </div>
-      </header>
+
+      <AuthNavbar variant="signup" />
 
       <main
-        className="relative flex flex-1 items-center justify-center overflow-hidden lg:justify-end"
+        className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:flex-row lg:justify-end lg:px-0 lg:pb-0 lg:pt-0"
         style={{ minHeight: "calc(100vh - 64px)" }}>
         <AuthCarousel slides={slides} />
 
-        <div className="relative z-20 w-full max-w-2xl px-4 sm:px-6 lg:mr-24 lg:max-w-[680px] lg:pr-8">
-          <div className="w-full rounded-custom border border-gray-100 bg-white/85 p-8 shadow-2xl backdrop-blur-sm sm:p-10">
+        <div className="relative z-20 w-full max-w-2xl lg:mr-24 lg:max-w-[680px] lg:pr-8">
+          <div className="w-full rounded-custom border border-gray-100 bg-white/85 p-4 shadow-2xl backdrop-blur-sm sm:p-8 lg:p-10">
             <div className="mb-6 text-center">
               <h2 className="text-2xl font-bold text-gray-900">
                 {headingText}
               </h2>
             </div>
 
-            <form className="space-y-4" action="#" method="POST">
+            <form className="space-y-4" onSubmit={handleSubmit} action="#">
               <div>
                 <label
                   className="mb-1 flex items-center text-sm font-medium text-gray-700"
@@ -73,6 +102,7 @@ export default function SignUp() {
                     id="role"
                     name="role"
                     value={role}
+                    required
                     onChange={(event) => setRole(event.target.value)}
                     className="block w-full appearance-none rounded-custom border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2">
                     <option value="">Select your role</option>
@@ -86,7 +116,7 @@ export default function SignUp() {
               <div>
                 <label
                   className="mb-1 flex items-center text-sm font-medium text-gray-700"
-                  htmlFor="username">
+                  htmlFor="fullname">
                   <svg
                     className="mr-2 h-4 w-4"
                     fill="none"
@@ -104,8 +134,8 @@ export default function SignUp() {
                 </label>
                 <div className="mt-1">
                   <Input
-                    id="username"
-                    name="username"
+                    id="fullname"
+                    name="fullname"
                     type="text"
                     required
                     placeholder="Enter your full name"
@@ -307,12 +337,26 @@ export default function SignUp() {
                 )}
               </div>
 
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-custom border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </p>
+              )}
+
               <div>
                 <Button
                   type="submit"
-                  disabled={passwordMismatch || !password || !confirmPassword}
+                  disabled={
+                    isPending ||
+                    passwordMismatch ||
+                    !password ||
+                    !confirmPassword ||
+                    !role
+                  }
                   className="w-full rounded-custom bg-brand px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                  Create Account
+                  {isPending ? "Creating account..." : "Create Account"}
                 </Button>
               </div>
 
