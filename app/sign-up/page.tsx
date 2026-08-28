@@ -1,12 +1,13 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { AuthCarousel } from "@/components/auth-carousel";
+import AuthNavbar from "@/components/auth-navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth/auth-client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import AuthNavbar from "@/components/auth-navbar";
 
 const slides = [
   { src: "/hero.png", alt: "School Campus", priority: true },
@@ -24,6 +25,9 @@ export default function SignUp() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showGoogleRoleModal, setShowGoogleRoleModal] = useState(false);
+  const [googleRole, setGoogleRole] = useState<string>("student");
+  const [googlePhone, setGooglePhone] = useState<string>("");
 
   const headingText =
     role === "student"
@@ -43,21 +47,44 @@ export default function SignUp() {
     setIsPending(true);
 
     const formData = new FormData(event.currentTarget);
-    const fullName = String(formData.get("fullname") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
     const phone = String(formData.get("phone") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
     const selectedRole = String(formData.get("role") ?? "").trim();
     const submittedPassword = String(formData.get("password") ?? "");
 
-    const { error: signUpError } = await authClient.signUp.email({
+    // Require name for email/password signups
+    if (!name) {
+      setError("Full name is required for email sign-ups.");
+      setIsPending(false);
+      return;
+    }
+
+    const payload: Record<string, any> = {
       email,
       password: submittedPassword,
-      name: fullName,
-      ...(fullName ? { fullname: fullName } : {}),
+      name,
       ...(phone ? { phone } : {}),
       ...(selectedRole ? { role: selectedRole } : {}),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    };
+
+    // Check for existing account with same email before attempting sign-up
+    try {
+      const check = await fetch(`/api/debug/mongo?action=exists&email=${encodeURIComponent(email)}`);
+      const json = await check.json();
+      if (check.ok && json?.ok && json.count > 0) {
+        setError("An account with this email already exists. Please sign in instead.");
+        setIsPending(false);
+        return;
+      }
+    } catch (e) {
+      // non-fatal — continue to try sign-up, but log
+      console.error('Email existence check failed', e);
+    }
+
+    const { error: signUpError } = await authClient.signUp.email(
+      payload as any,
+    );
 
     setIsPending(false);
 
@@ -74,7 +101,6 @@ export default function SignUp() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100 font-sans">
-
       <AuthNavbar variant="signup" />
 
       <main
@@ -116,7 +142,7 @@ export default function SignUp() {
               <div>
                 <label
                   className="mb-1 flex items-center text-sm font-medium text-gray-700"
-                  htmlFor="fullname">
+                  htmlFor="name">
                   <svg
                     className="mr-2 h-4 w-4"
                     fill="none"
@@ -134,12 +160,12 @@ export default function SignUp() {
                 </label>
                 <div className="mt-1">
                   <Input
-                    id="fullname"
-                    name="fullname"
+                    id="name"
+                    name="name"
                     type="text"
                     required
                     placeholder="Enter your full name"
-                    className="block w-full appearance-none rounded-custom border border-gray-300 px-3 py-2.5 shadow-sm placeholder:text-gray-400 focus:border-brand focus:outline-none focus:ring-brand sm:text-sm"
+                    className={`block w-full appearance-none rounded-custom border border-gray-300 px-3 py-2.5 shadow-sm placeholder:text-gray-400 focus:border-brand focus:outline-none focus:ring-brand sm:text-sm ${showGoogleRoleModal ? 'hidden' : ''}`}
                   />
                 </div>
               </div>
@@ -362,11 +388,12 @@ export default function SignUp() {
 
               <p className="text-center text-sm text-gray-600">
                 Already have an account?{" "}
-                <a
-                  href="/sign-in"
+                <button
+                  type="button"
+                  onClick={() => router.push("/sign-in")}
                   className="font-medium text-brand-600 hover:text-brand-500 hover:underline">
                   Log In
-                </a>
+                </button>
               </p>
             </form>
 
@@ -381,8 +408,9 @@ export default function SignUp() {
               </div>
 
               <div className="mt-4">
-                <a
-                  href="#"
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleRoleModal(true)}
                   className="flex w-full items-center justify-center rounded-custom bg-red-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                   <svg
                     aria-hidden="true"
@@ -392,8 +420,91 @@ export default function SignUp() {
                     <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z" />
                   </svg>
                   Sign Up with Google
-                </a>
+                </button>
               </div>
+
+              {/* Role selection modal for Google sign-up */}
+              {showGoogleRoleModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                  <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+                    <h3 className="mb-4 text-lg font-medium">
+                      Select your role
+                    </h3>
+                    <div className="mb-4 flex flex-col gap-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="google-role"
+                          value="student"
+                          checked={googleRole === "student"}
+                          onChange={() => setGoogleRole("student")}
+                        />
+                        <span>Student</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="google-role"
+                          value="parent"
+                          checked={googleRole === "parent"}
+                          onChange={() => setGoogleRole("parent")}
+                        />
+                        <span>Parent</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="google-role"
+                          value="teacher"
+                          checked={googleRole === "teacher"}
+                          onChange={() => setGoogleRole("teacher")}
+                        />
+                        <span>Teacher</span>
+                      </label>
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Phone (optional)</label>
+                      <input
+                        type="tel"
+                        value={googlePhone}
+                        onChange={(e) => setGooglePhone(e.target.value)}
+                        placeholder="Enter phone to save with account"
+                        className="block w-full rounded-custom border border-gray-300 px-3 py-2.5 sm:text-sm"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowGoogleRoleModal(false)}
+                        className="rounded-md px-4 py-2">
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!googleRole) return;
+                          try {
+                            // Save the chosen role and optional phone to sessionStorage so it survives the OAuth redirect
+                            const meta = { role: googleRole, phone: googlePhone, ts: Date.now() };
+                            sessionStorage.setItem('socialSignUpMeta', JSON.stringify(meta));
+                          } catch (e) {
+                            console.error('sessionStorage not available', e);
+                          }
+                          // Redirect to Google sign-in; use a relative callback URL
+                          await authClient.signIn.social({
+                            provider: "google",
+                            callbackURL: "/sign-in",
+                          } as any);
+                        }}
+                        className="rounded-md bg-brand px-4 py-2 text-white">
+                        Continue with Google
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

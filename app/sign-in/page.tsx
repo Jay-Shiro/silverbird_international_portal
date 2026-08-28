@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
 "use client";
 
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth/auth-client";
 import { getDashboardRoute, normalizeRole } from "@/lib/dashboard-routes";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const slides = [
   { src: "/hero.png", alt: "School Campus", priority: true },
@@ -21,6 +22,9 @@ export default function SignIn() {
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [conflictEmail, setConflictEmail] = useState<string | null>(null);
+  const [prefillEmail, setPrefillEmail] = useState<string>("");
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -81,9 +85,161 @@ export default function SignIn() {
     }
   };
 
+  // If redirected back from Google sign-up with a role query param, apply it to the user
+  // and redirect them to their dashboard.
+  useEffect(() => {
+    (async () => {
+      try {
+        const params = new URL(window.location.href).searchParams;
+        // If conflict query present, show banner
+        if (params.get('conflict') === '1') {
+          setConflict(true);
+          const e = params.get('email');
+          if (e) {
+            setConflictEmail(e);
+            setPrefillEmail(e);
+          }
+        }
+
+        // First try to get role/phone from URL (older flow), then fall back to sessionStorage
+        let roleParam = params.get("role");
+        let phoneParam = params.get("phone");
+        if (!roleParam) {
+          try {
+            const raw = sessionStorage.getItem("socialSignUpMeta");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              // Ensure meta isn't stale (e.g., older than 10 minutes)
+              if (
+                parsed &&
+                parsed.role &&
+                Date.now() - (parsed.ts || 0) < 10 * 60 * 1000
+              ) {
+                roleParam = parsed.role;
+                phoneParam = parsed.phone ?? phoneParam;
+              }
+            }
+          } catch (e) {
+            console.error(
+              "Failed to read socialSignUpMeta from sessionStorage",
+              e,
+            );
+          }
+        }
+
+        if (!roleParam) return;
+        const normalized = normalizeRole(roleParam);
+        if (!normalized) return;
+
+        // Wait for session - sometimes the session is not immediately available after provider redirect
+        let sessionData: any = null;
+        let attempts = 0;
+        while (attempts < 10) {
+          const resp = await authClient.getSession();
+          sessionData = resp.data;
+          if (sessionData?.user?.email) break;
+          attempts += 1;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+
+        const userEmail = sessionData?.user?.email;
+        const userId = sessionData?.user?.id;
+        if (!userEmail) {
+          // Not signed in — nothing to do here
+          return;
+        }
+
+        // Clear stored meta now that we have read it
+        try {
+          sessionStorage.removeItem("socialSignUpMeta");
+        } catch (e) {
+          /* ignore */
+        }
+
+        // Check for existing other accounts with same email (duplicate prevention)
+        try {
+          const check = await fetch(
+            `/api/debug/mongo?action=exists&email=${encodeURIComponent(userEmail)}`,
+          );
+          const checkJson = await check.json();
+          if (check.ok && checkJson?.ok) {
+            const others = (checkJson.users || []).filter(
+              (u: any) => u.id !== userId,
+            );
+            if (others.length > 0) {
+              // Conflict detected: sign out this session and redirect user to sign-in
+              try {
+                await authClient.signOut();
+              } catch (e) {
+                console.error("signOut failed", e);
+              }
+              router.replace("/sign-in?conflict=1");
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("duplicate check failed", e);
+        }
+
+        // Call server endpoint to set role (uses POST handler in /api/debug/mongo)
+        const res = await fetch("/api/debug/mongo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set-role",
+            email: userEmail,
+            role: normalized,
+            phone: phoneParam ?? undefined,
+          }),
+        });
+        const payload = await res.json();
+        if (!res.ok || !payload?.ok) {
+          console.error("Failed to set role after Google sign-up", payload);
+          return;
+        }
+
+        // Redirect to dashboard
+        router.replace(getDashboardRoute(normalized));
+      } catch (err) {
+        console.error("Error applying Google sign-up role:", err);
+      }
+    })();
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-100 font-sans">
       <AuthNavbar variant="signin" />
+
+      {conflict && (
+        <div className="mx-auto mt-4 max-w-xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <div className="flex items-start justify-between">
+            <div>
+              <strong className="block font-medium">An account with this email already exists.</strong>
+              <div className="mt-1 text-sm text-red-800">
+                Please sign in to your existing account to link your Google account, or visit your profile after signing in to attach social providers.
+              </div>
+              {conflictEmail && (
+                <div className="mt-2 text-xs text-red-700">Email: {conflictEmail}</div>
+              )}
+            </div>
+            <div className="ml-4 flex shrink-0 items-center gap-2">
+              <a
+                href={"/sign-in"}
+                className="rounded bg-white px-3 py-1 text-xs font-medium text-red-700 shadow-sm"
+                onClick={(e) => {
+                  // Clear the conflict query param and reload without it
+                  e.preventDefault();
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('conflict');
+                  url.searchParams.delete('email');
+                  window.location.href = url.toString();
+                }}>
+                Continue to sign in
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main
         className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:flex-row lg:justify-end lg:px-0 lg:pb-0 lg:pt-0"
@@ -123,6 +279,8 @@ export default function SignIn() {
                   autoComplete="email"
                   required
                   placeholder="Enter your email"
+                  value={prefillEmail || undefined}
+                  onChange={(e) => setPrefillEmail(e.target.value)}
                   className="block w-full appearance-none rounded-custom border border-gray-300 px-3 py-2.5 shadow-sm placeholder:text-gray-400 focus:border-brand focus:outline-none focus:ring-brand sm:text-sm"
                 />
               </div>
@@ -188,11 +346,12 @@ export default function SignIn() {
 
               <p className="text-center text-sm text-gray-600">
                 Don&apos;t have an account?{" "}
-                <a
-                  href="/sign-up"
+                <button
+                  type="button"
+                  onClick={() => router.push("/sign-up")}
                   className="font-medium text-brand-600 hover:text-brand-500 hover:underline">
                   Create account
-                </a>
+                </button>
               </p>
             </form>
 

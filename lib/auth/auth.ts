@@ -6,10 +6,40 @@ import { MongoClient } from "mongodb";
 export const ROLES = ["student", "parent", "teacher"] as const;
 export type Role = (typeof ROLES)[number];
 
-const client = new MongoClient(process.env.MONGODB_URI!);
+const uri = process.env.MONGODB_URI!;
+if (!uri) {
+  throw new Error("MONGODB_URI must be set in environment");
+}
+
+declare global {
+  var _mongoClient: MongoClient | undefined;
+}
+
+const options = {
+  serverSelectionTimeoutMS: 5000, // Drop this to fail faster if Atlas blocks the IP
+  connectTimeoutMS: 5000,
+  autoSelectFamily: false, // Fixes TLS alert 80 / Node IPv6 dual-stack handshake drops
+};
+
+// Singleton Client Instance
+if (!global._mongoClient) {
+  global._mongoClient = new MongoClient(uri, options);
+  // Trigger connection lazily in background, don't await at module level
+  global._mongoClient.connect().catch((err) => {
+    console.error("Failed to eagerly connect to MongoDB:", err);
+  });
+}
+
+const client = global._mongoClient;
 const db = client.db();
 
+// Export the raw client and db for server-side routes that need to update user records
+export const mongoClient = client;
+export const mongoDb = db;
+
 export const auth = betterAuth({
+  // Pass the db and client directly. The adapter will internally handle waiting for the
+  // active connection pool ready state without blocking Next.js compilation phases.
   database: mongodbAdapter(db, { client }),
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
@@ -21,18 +51,11 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.CLIENT_ID as string,
       clientSecret: process.env.CLIENT_SECRET as string,
-      // Always prompt account chooser so users can select the desired Google account
-      // (show account picker both on sign-up and sign-in).
       prompt: "select_account",
     },
   },
   user: {
     additionalFields: {
-      fullname: {
-        type: "string",
-        required: true,
-        input: true,
-      },
       role: {
         type: "string",
         required: true,
@@ -46,8 +69,6 @@ export const auth = betterAuth({
       },
     },
   },
-  // nextCookies must be the LAST plugin so that Server Actions can still
-  // write auth cookies after the action returns.
   plugins: [nextCookies()],
 });
 
